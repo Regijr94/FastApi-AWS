@@ -29,4 +29,13 @@ jobs:
           
       - run: sam build
       
-      - run: sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name api-pokemon --resolve-s3 --capabilities CAPABILITY_IAM --parameter-overrides OmdbApiKey=${{ secrets.OMDB_API_KEY }}
+      - name: Package and Deploy via CloudFormation
+        run: |
+          # 1. Garante que existe um bucket S3 para os artefatos (usando Account ID para ser único)
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET_NAME="api-pokemon-artifacts-${ACCOUNT_ID}"
+          aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null || aws s3 mb "s3://$BUCKET_NAME"
+          
+          # 2. Empacota (Upload para S3) e Deploy (CloudFormation)
+          aws cloudformation package --template-file .aws-sam/build/template.yaml --s3-bucket $BUCKET_NAME --output-template-file packaged.yaml
+          aws cloudformation deploy --template-file packaged.yaml --stack-name api-pokemon --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset --parameter-overrides OmdbApiKey="${{ secrets.OMDB_API_KEY }}"
